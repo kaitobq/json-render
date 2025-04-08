@@ -8,8 +8,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode"
 )
 
+// Creates a new Generator
 func NewGenerator(inputDir, outputDir string, opts *Options) *Generator {
 	if opts == nil {
 		opts = &Options{
@@ -27,6 +29,7 @@ func NewGenerator(inputDir, outputDir string, opts *Options) *Generator {
 	}
 }
 
+// Generates the TypeScript type definitions
 func (g *Generator) Generate() error {
 	types, err := g.parseGoFiles()
 	if err != nil {
@@ -39,6 +42,7 @@ func (g *Generator) Generate() error {
 	return os.WriteFile(outputPath, []byte(tsContent), 0644)
 }
 
+// Parses the Go files and returns the TypeScript type definitions
 func (g *Generator) parseGoFiles() ([]*TypeDefinition, error) {
 	var types []*TypeDefinition
 
@@ -77,6 +81,7 @@ func (g *Generator) parseGoFiles() ([]*TypeDefinition, error) {
 	return types, err
 }
 
+// Parses the struct type and returns the TypeScript type definition
 func (g *Generator) parseStructType(name string, structType *ast.StructType) *TypeDefinition {
 	typeDef := &TypeDefinition{
 		Name:       name,
@@ -106,6 +111,7 @@ func (g *Generator) parseStructType(name string, structType *ast.StructType) *Ty
 	return typeDef
 }
 
+// Parses the field type and returns the TypeScript type
 func (g *Generator) parseFieldType(expr ast.Expr) string {
 	switch t := expr.(type) {
 	case *ast.Ident:
@@ -119,11 +125,14 @@ func (g *Generator) parseFieldType(expr ast.Expr) string {
 		return fmt.Sprintf("Record<%s, %s>", keyType, valueType)
 	case *ast.StarExpr:
 		return g.parseFieldType(t.X)
+	case *ast.InterfaceType:
+		return "any" // treat interface{} as any
 	default:
-		return g.convertGoTypeToTS(fmt.Sprintf("%T", expr))
+		return "any" // unknown type is treated as any
 	}
 }
 
+// Converts the Go type to the TypeScript type
 func (g *Generator) convertGoTypeToTS(goType string) string {
 	switch goType {
 	case "string":
@@ -143,6 +152,7 @@ func (g *Generator) convertGoTypeToTS(goType string) string {
 	}
 }
 
+// Generates the TypeScript type definitions
 func (g *Generator) generateTypeScript(types []*TypeDefinition) string {
 	var sb strings.Builder
 
@@ -173,6 +183,7 @@ func (g *Generator) generateTypeScript(types []*TypeDefinition) string {
 					name = parts[0]
 				}
 			}
+			name = g.convertName(name)
 
 			sb.WriteString(fmt.Sprintf("%s: %s;\n", name, prop.Type))
 		}
@@ -183,6 +194,7 @@ func (g *Generator) generateTypeScript(types []*TypeDefinition) string {
 	return sb.String()
 }
 
+// Parses the struct tag and returns the TypeScript type definition
 func (g *Generator) parseStructTag(tag string) map[string]string {
 	tags := make(map[string]string)
 	tag = strings.Trim(tag, "`")
@@ -203,4 +215,51 @@ func (g *Generator) parseStructTag(tag string) map[string]string {
 	}
 
 	return tags
+}
+
+// Converts the name to the specified naming convention
+func (g *Generator) convertName(name string) string {
+	switch g.Options.NamingConvention {
+	case NamingConventionSnakeCase:
+		return toSnakeCase(name)
+	case NamingConventionCamelCase:
+		return toCamelCase(name)
+	default:
+		return name
+	}
+}
+
+// Converts the name to snake case
+func toSnakeCase(s string) string {
+	var result strings.Builder
+	for i, r := range s {
+		if i > 0 && unicode.IsUpper(r) {
+			result.WriteRune('_')
+		}
+		result.WriteRune(unicode.ToLower(r))
+	}
+	return result.String()
+}
+
+// Converts the name to camel case
+func toCamelCase(s string) string {
+	var result strings.Builder
+	capitalize := false
+	for i, r := range s {
+		if i == 0 {
+			result.WriteRune(unicode.ToLower(r))
+			continue
+		}
+		if r == '_' {
+			capitalize = true
+			continue
+		}
+		if capitalize {
+			result.WriteRune(unicode.ToUpper(r))
+			capitalize = false
+		} else {
+			result.WriteRune(r)
+		}
+	}
+	return result.String()
 }
