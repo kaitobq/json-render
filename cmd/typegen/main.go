@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"kaitobq/json-render/pkg/typegen"
+	"github.com/kaitobq/json-render/pkg/typegen"
 )
 
 func main() {
