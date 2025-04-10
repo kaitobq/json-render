@@ -31,12 +31,19 @@ func NewGenerator(inputDir, outputDir string, opts *Options) *Generator {
 
 // Generates the TypeScript type definitions
 func (g *Generator) Generate() error {
+	// Parse single file
 	types, err := g.parseGoFiles()
 	if err != nil {
 		return fmt.Errorf("failed to parse go files: %w", err)
 	}
 
 	tsContent := g.generateTypeScript(types)
+
+	// If output file name is not specified, generate from input file name
+	if g.Options.OutputFileName == "" {
+		base := filepath.Base(g.InputDir)
+		g.Options.OutputFileName = strings.TrimSuffix(base, ".go") + ".ts"
+	}
 
 	outputPath := filepath.Join(g.OutputDir, g.Options.OutputFileName)
 	return os.WriteFile(outputPath, []byte(tsContent), 0644)
@@ -46,39 +53,39 @@ func (g *Generator) Generate() error {
 func (g *Generator) parseGoFiles() ([]*TypeDefinition, error) {
 	var types []*TypeDefinition
 
-	err := filepath.Walk(g.InputDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
+	fset := token.NewFileSet()
+	node, err := parser.ParseFile(fset, g.InputDir, nil, parser.ParseComments)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse file %s: %w", g.InputDir, err)
+	}
+
+	// Get package name
+	packageName := node.Name.Name
+
+	ast.Inspect(node, func(n ast.Node) bool {
+		typeSpec, ok := n.(*ast.TypeSpec)
+		if !ok {
+			return true
 		}
 
-		if !info.IsDir() && strings.HasSuffix(path, ".go") {
-			fset := token.NewFileSet()
-
-			node, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
-			if err != nil {
-				return fmt.Errorf("failed to parse file %s: %w", path, err)
-			}
-
-			ast.Inspect(node, func(n ast.Node) bool {
-				typeSpec, ok := n.(*ast.TypeSpec)
-				if !ok {
-					return true
-				}
-
-				structType, ok := typeSpec.Type.(*ast.StructType)
-				if !ok {
-					return true
-				}
-
-				typeDef := g.parseStructType(typeSpec.Name.Name, structType)
-				types = append(types, typeDef)
-				return true
-			})
+		// Only process structs
+		structType, ok := typeSpec.Type.(*ast.StructType)
+		if !ok {
+			return true
 		}
-		return nil
+
+		// Only process exported types
+		if !ast.IsExported(typeSpec.Name.Name) {
+			return true
+		}
+
+		typeDef := g.parseStructType(typeSpec.Name.Name, structType)
+		typeDef.Package = packageName
+		types = append(types, typeDef)
+		return true
 	})
 
-	return types, err
+	return types, nil
 }
 
 // Parses the struct type and returns the TypeScript type definition
@@ -126,9 +133,16 @@ func (g *Generator) parseFieldType(expr ast.Expr) string {
 	case *ast.StarExpr:
 		return g.parseFieldType(t.X)
 	case *ast.InterfaceType:
-		return "any" // treat interface{} as any
+		return "any"
+	case *ast.SelectorExpr:
+		if ident, ok := t.X.(*ast.Ident); ok {
+			if ident.Name == "time" && t.Sel.Name == "Time" {
+				return "string" // time.Time as string
+			}
+		}
+		return g.convertGoTypeToTS(t.Sel.Name)
 	default:
-		return "any" // unknown type is treated as any
+		return "any"
 	}
 }
 

@@ -1,5 +1,12 @@
 package typegen
 
+type NamingConvention string
+
+const (
+	NamingConventionCamelCase NamingConvention = "camelCase"
+	NamingConventionSnakeCase NamingConvention = "snake_case"
+)
+
 type Generator struct {
 	InputDir  string
 	OutputDir string
@@ -13,16 +20,9 @@ type Options struct {
 	NamingConvention NamingConvention
 }
 
-type NamingConvention string
-
-const (
-	NamingConventionCamelCase  NamingConvention = "camelCase"
-	NamingConventionPascalCase NamingConvention = "PascalCase"
-	NamingConventionSnakeCase  NamingConvention = "snake_case"
-)
-
 type TypeDefinition struct {
 	Name       string
+	Package    string
 	Properties []Property
 	IsExported bool
 }
