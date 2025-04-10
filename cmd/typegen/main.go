@@ -15,7 +15,7 @@ func main() {
 	var (
 		inputDir         = flag.String("input", ".", "Input directory (contains Go files)")
 		outputDir        = flag.String("output", "./generated", "Output directory")
-		useInterface     = flag.Bool("interface", true, "Generate as interface (false generates as type)")
+		useInterface     = flag.Bool("interface", false, "Generate as interface (false generates as type)")
 		useReadonly      = flag.Bool("readonly", false, "Generate as readonly properties")
 		namingConvention = flag.String("naming", "camelCase", "Naming convention (camelCase/snake_case)")
 	)
@@ -27,19 +27,17 @@ func main() {
 		log.Fatalf("Failed to create output directory: %v", err)
 	}
 
-	// Search all .go files in input directory
-	var goFiles []string
-	err := filepath.Walk(*inputDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if !info.IsDir() && strings.HasSuffix(path, ".go") {
-			goFiles = append(goFiles, path)
-		}
-		return nil
-	})
+	// Search for .go files in the input directory (only direct files, no subdirectories)
+	entries, err := os.ReadDir(*inputDir)
 	if err != nil {
-		log.Fatalf("Failed to search files: %v", err)
+		log.Fatalf("Failed to read directory: %v", err)
+	}
+
+	var goFiles []string
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".go") {
+			goFiles = append(goFiles, filepath.Join(*inputDir, entry.Name()))
+		}
 	}
 
 	if len(goFiles) == 0 {
